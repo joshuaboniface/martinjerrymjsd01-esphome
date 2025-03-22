@@ -1,0 +1,464 @@
+---
+
+###############################################################################
+# Martin Jerry MJ-SD01 Dimmer v1.0 ESPHome configuration
+###############################################################################
+#
+#    Copyright (C) 2025 Joshua M. Boniface <joshua@boniface.me>
+#
+#    Based on the original (no license provided) by @mjoshd and relicensed in
+#    good faith.
+#
+#    This program is free software: you can redistribute it and/or modify
+#    it under the terms of the GNU General Public License as published by
+#    the Free Software Foundation, version 3.
+#
+#    This program is distributed in the hope that it will be useful,
+#    but WITHOUT ANY WARRANTY; without even the implied warranty of
+#    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+#    GNU General Public License for more details.
+#
+#    You should have received a copy of the GNU General Public License
+#    along with this program.  If not, see <https://www.gnu.org/licenses/>.
+#
+###############################################################################
+
+esphome:
+  name: martin-jerry-mj-sd01
+  name_add_mac_suffix: true
+  friendly_name: Martin Jerry MJ-SD01
+  project:
+    name: joshuaboniface.martinjerrymjsd01-esphome
+    version: "1.0"
+  platformio_options:
+    build_flags:
+      - -DNDEBUG
+      - -Os
+
+dashboard_import:
+  package_import_url: github://joshuaboniface/martinjerrymjsd01-esphome/mj-sd01.yaml
+
+esp8266:
+  board: esp01_1m
+
+logger:
+  level: WARN
+  baud_rate: 0  # Disable UART logging
+
+api:
+  reboot_timeout: 15min
+
+ota:
+  platform: esphome
+
+web_server:
+  port: 80
+
+captive_portal:
+
+mdns:
+  disabled: false
+
+wifi:
+  ap: {}
+  domain: ""
+  reboot_timeout: 15min
+  power_save_mode: none
+
+substitutions:
+  # Minimum level to permit instant shutoff
+  pwm_min_power: "5%"
+  # Transition time when turning on/off
+  transition_length: "0.5s"
+  # Default gamma of 2.8 is generally too high, so use 2.0
+  gamma_correct: "2.0"
+
+preferences:
+  flash_write_interval: 15s
+
+globals:
+  - id: min_brightness_pct
+    type: int
+    restore_value: true
+    initial_value: '20'
+  - id: max_brightness_pct
+    type: int
+    restore_value: true
+    initial_value: '100'
+
+number:
+  - platform: template
+    name: "Min Brightness"
+    id: min_brightness_control
+    min_value: 5
+    max_value: 50
+    step: 1
+    unit_of_measurement: "%"
+    mode: slider
+    set_action:
+      then:
+        - globals.set:
+            id: min_brightness_pct
+            value: !lambda "return (int)x;"
+    lambda: |-
+      return id(min_brightness_pct);
+
+  - platform: template
+    name: "Max Brightness"
+    id: max_brightness_control
+    min_value: 50
+    max_value: 100
+    step: 1
+    unit_of_measurement: "%"
+    mode: slider
+    set_action:
+      then:
+        - globals.set:
+            id: max_brightness_pct
+            value: !lambda "return (int)x;"
+    lambda: |-
+      return id(max_brightness_pct);
+
+button:
+  - platform: template
+    name: "Brightness Up"
+    on_press:
+      - script.execute: press_up_button
+
+  - platform: template
+    name: "Brightness Down"
+    on_press:
+      - script.execute: press_down_button
+
+  - platform: template
+    name: "Brightness 1"
+    on_press:
+      - lambda: |-
+          if (!id(dimmer).remote_values.get_state()) {
+            auto call = id(dimmer).turn_on();
+            call.set_brightness(id(min_brightness_pct) / 100.0f);
+            call.perform();
+          } else {
+            auto call = id(dimmer).turn_on();
+            float min_val = id(min_brightness_pct) / 100.0f;
+            float max_val = id(max_brightness_pct) / 100.0f;
+            float range = max_val - min_val;
+            float step_size = range / 4.0f;
+            call.set_brightness(min_val);
+            call.perform();
+          }
+
+  - platform: template
+    name: "Brightness 2"
+    on_press:
+      - lambda: |-
+          auto call = id(dimmer).turn_on();
+          float min_val = id(min_brightness_pct) / 100.0f;
+          float max_val = id(max_brightness_pct) / 100.0f;
+          float range = max_val - min_val;
+          float step_size = range / 4.0f;
+          call.set_brightness(min_val + step_size);
+          call.perform();
+
+  - platform: template
+    name: "Brightness 3"
+    on_press:
+      - lambda: |-
+          auto call = id(dimmer).turn_on();
+          float min_val = id(min_brightness_pct) / 100.0f;
+          float max_val = id(max_brightness_pct) / 100.0f;
+          float range = max_val - min_val;
+          float step_size = range / 4.0f;
+          call.set_brightness(min_val + (step_size * 2));
+          call.perform();
+
+  - platform: template
+    name: "Brightness 4"
+    on_press:
+      - lambda: |-
+          auto call = id(dimmer).turn_on();
+          float min_val = id(min_brightness_pct) / 100.0f;
+          float max_val = id(max_brightness_pct) / 100.0f;
+          float range = max_val - min_val;
+          float step_size = range / 4.0f;
+          call.set_brightness(min_val + (step_size * 3));
+          call.perform();
+
+  - platform: template
+    name: "Brightness 5"
+    on_press:
+      - lambda: |-
+          auto call = id(dimmer).turn_on();
+          call.set_brightness(id(max_brightness_pct) / 100.0f);
+          call.perform();
+
+  - platform: restart
+    name: "ESP8266 Restart"
+    icon: mdi:power-cycle
+    entity_category: diagnostic
+
+  - platform: factory_reset
+    name: "ESP8266 Factory Reset"
+    icon: mdi:restart-alert
+    entity_category: diagnostic
+
+binary_sensor:
+  - platform: gpio
+    name: "Up Button"
+    id: up_button
+    pin:
+      number: GPIO0
+      inverted: true
+      mode: INPUT_PULLUP
+    on_press:
+      - script.execute: press_up_button
+
+  - platform: gpio
+    name: "Down Button"
+    id: down_button
+    pin:
+      number: GPIO1
+      inverted: true
+      mode: INPUT_PULLUP
+    on_press:
+      - script.execute: press_down_button
+
+  - platform: gpio
+    name: "Main Button"
+    id: main_button
+    pin:
+      number: GPIO15
+      mode: INPUT_PULLUP
+    on_press:
+      - if:
+          condition:
+            light.is_on: dimmer
+          then:
+            - light.turn_off: dimmer
+          else:
+            - light.turn_on: dimmer
+
+light:
+  - platform: monochromatic
+    name: "Light"
+    id: dimmer
+    output: pwm
+    default_transition_length: ${transition_length}
+    gamma_correct: ${gamma_correct}
+    restore_mode: RESTORE_DEFAULT_OFF
+    effects:
+      - flicker:
+          name: "Flicker"
+          alpha: 90%
+          intensity: 25%
+      - strobe:
+          name: "Fast Pulse"
+          colors:
+            - state: true
+              brightness: 100%
+              duration: 500ms
+            - brightness: 1%
+              duration: 750ms
+    on_state:
+      - script.execute: set_lights
+    on_turn_off:
+      then:
+        - lambda: |-
+            id(pwm).set_level(0.0f);
+
+  - platform: status_led
+    name: "Status LED"
+    id: ledred
+    restore_mode: RESTORE_DEFAULT_ON
+    pin:
+      number: GPIO4
+      inverted: true
+
+output:
+  - platform: esp8266_pwm
+    id: pwm
+    pin: GPIO13
+    frequency: 300 Hz
+    min_power: ${pwm_min_power}
+    power_supply: relay
+
+  - platform: gpio
+    id: led1
+    pin: GPIO14
+    inverted: true
+
+  - platform: gpio
+    id: led2
+    pin: GPIO12
+    inverted: true
+
+  - platform: gpio
+    id: led3
+    pin: GPIO5
+    inverted: true
+
+  - platform: gpio
+    id: led4
+    pin: GPIO3
+    inverted: true
+
+power_supply:
+  - id: relay
+    pin:
+      number: GPIO16
+      inverted: true
+    enable_time: 0s
+    keep_on_time: 0s
+
+script:
+  - id: set_lights
+    then:
+      - lambda: |-
+          if (id(dimmer).remote_values.get_state() == 0.f) {
+            id(led1).turn_off();
+            id(led2).turn_off();
+            id(led3).turn_off();
+            id(led4).turn_off();
+            // Status LED when dimmer is off
+            id(ledred).turn_on().perform();
+            return;
+          }
+          id(ledred).turn_off().perform();
+          auto val = id(dimmer).remote_values.get_brightness();
+
+          // Calculate thresholds based on min/max brightness
+          float min_val = id(min_brightness_pct) / 100.0f;
+          float max_val = id(max_brightness_pct) / 100.0f;
+          float range = max_val - min_val;
+          float step_size = range / 4.0f; // 5 levels (0-4) over the range
+
+          // Level 0: No LEDs on (just the power LED which is always on)
+          // Level 1: LED1 on
+          if (val >= (min_val + step_size * 0.5)) {
+            id(led1).turn_on();
+          } else {
+            id(led1).turn_off();
+          }
+
+          // Level 2: LED1+LED2 on
+          if (val >= (min_val + step_size * 1.5)) {
+            id(led2).turn_on();
+          } else {
+            id(led2).turn_off();
+          }
+
+          // Level 3: LED1+LED2+LED3 on
+          if (val >= (min_val + step_size * 2.5)) {
+            id(led3).turn_on();
+          } else {
+            id(led3).turn_off();
+          }
+
+          // Level 4: LED1+LED2+LED3+LED4 on
+          if (val >= (min_val + step_size * 3.5)) {
+            id(led4).turn_on();
+          } else {
+            id(led4).turn_off();
+          }
+
+  - id: press_up_button
+    then:
+      - if:
+          condition:
+            light.is_on: dimmer
+          then:
+            - lambda: |-
+                auto val = id(dimmer).remote_values.get_brightness();
+                float min_val = id(min_brightness_pct) / 100.0f;
+                float max_val = id(max_brightness_pct) / 100.0f;
+                float range = max_val - min_val;
+                float step_size = range / 4.0f; // 5 levels (0-4) over the range
+
+                // Calculate which level we're currently at (0-4)
+                int current_level = 0;
+                if (val >= min_val + (step_size * 3.5)) current_level = 4;
+                else if (val >= min_val + (step_size * 2.5)) current_level = 3;
+                else if (val >= min_val + (step_size * 1.5)) current_level = 2;
+                else if (val >= min_val + (step_size * 0.5)) current_level = 1;
+
+                if (current_level >= 4) {
+                  return;
+                }
+
+                // Move to next level
+                current_level++;
+
+                // Calculate new brightness
+                float new_brightness = min_val + (current_level * step_size);
+                if (new_brightness > max_val) new_brightness = max_val;
+
+                auto call = id(dimmer).turn_on();
+                call.set_brightness(new_brightness);
+                call.perform();
+          else:
+            - light.turn_on:
+                id: dimmer
+
+  - id: press_down_button
+    then:
+      - if:
+          condition:
+            light.is_on: dimmer
+          then:
+            - lambda: |-
+                auto val = id(dimmer).remote_values.get_brightness();
+                float min_val = id(min_brightness_pct) / 100.0f;
+                float max_val = id(max_brightness_pct) / 100.0f;
+                float range = max_val - min_val;
+                float step_size = range / 4.0f; // 5 levels (0-4) over the range
+
+                // Calculate which level we're currently at (0-4)
+                int current_level = 0;
+                if (val >= min_val + (step_size * 3.5)) current_level = 4;
+                else if (val >= min_val + (step_size * 2.5)) current_level = 3;
+                else if (val >= min_val + (step_size * 1.5)) current_level = 2;
+                else if (val >= min_val + (step_size * 0.5)) current_level = 1;
+
+                if (current_level <= 0) {
+                  return;
+                }
+
+                // Move to previous level
+                current_level--;
+
+                // Calculate new brightness
+                float new_brightness = min_val + (current_level * step_size);
+                if (new_brightness < min_val) new_brightness = min_val;
+
+                auto call = id(dimmer).turn_on();
+                call.set_brightness(new_brightness);
+                call.perform();
+          else:
+            - light.turn_on: 
+                id: dimmer
+
+sensor:
+  - platform: wifi_signal
+    name: "WiFi Signal"
+    update_interval: 60s
+    entity_category: diagnostic
+
+  - platform: uptime
+    name: "Uptime"
+    update_interval: 60s
+    entity_category: diagnostic
+
+text_sensor:
+  - platform: version
+    name: "ESPHome Version"
+    entity_category: diagnostic
+
+  - platform: wifi_info
+    ip_address:
+      name: "WiFi IP Address"
+    ssid:
+      name: "WiFi SSID"
+    bssid:
+      name: "WiFi BSSID"
+    mac_address:
+      name: "WiFi MAC Address"
