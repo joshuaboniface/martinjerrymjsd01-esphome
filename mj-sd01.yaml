@@ -40,6 +40,7 @@ dashboard_import:
 
 esp8266:
   board: esp01_1m
+  restore_from_flash: true
 
 logger:
   level: WARN
